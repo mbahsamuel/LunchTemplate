@@ -1,0 +1,102 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: ec2-LaunchTemplate-AutoScaling
+# ec2-launchtemplate-autoscaling.yaml
+Parameters:
+  VpcId:
+    Description: VPC ID
+    Type: String
+    Default: "vpc-070c3c4ddf310be5d"
+  StaticIPforSSH:
+    Description: Static IP for SSH access
+    Type: String
+    Default: 127.0.0.1/32
+  # Ec2ImageId:
+  #   Description: AMI ID
+  #   Type: AWS::ssm::parameter::value<String>
+  #   Default: "/test/image-id"
+  Ec2ImageId:
+    Description: AMI ID
+    Type: String
+    Default: "ami-02396cdd13e9a1257"
+  Ec2InstanceType:
+    Description: EC2 InstanceType
+    Type: String
+    Default: t2.micro
+  Ec2InstanceKeyName:
+    Description: EC2 SSH KEY
+    Type: String
+    Default: "EAST-KEY"
+  Ec2InstanceTagName:
+    Description: EC2 Tag Name
+    Type: String
+    Default: test-LaunchTemplate-ec2-20181115
+Resources:
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: "/"
+      Roles:
+        - !Ref Role
+
+  Role:
+    Type: AWS::IAM::Role
+    Properties:
+      Path: "/"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+  Ec2InstanceLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateData:
+        BlockDeviceMappings: 
+          - Ebs:
+              VolumeSize: 22
+              VolumeType: gp3
+              DeleteOnTermination: true
+              Encrypted: true
+            DeviceName: /dev/xvdcz
+        Monitoring: 
+          Enabled: true
+        SecurityGroupIds:
+        - !Ref 'Ec2SecurityGroupSSH'
+        TagSpecifications:
+        - ResourceType: instance
+          Tags:
+          - Key: Name
+            Value: !Ref 'Ec2InstanceTagName'
+        - ResourceType: volume
+          Tags:
+          - Key: Name
+            Value: !Ref 'Ec2InstanceTagName'
+        DisableApiTermination: true
+        KeyName: !Ref 'Ec2InstanceKeyName'
+        ImageId: !Ref 'Ec2ImageId'
+        InstanceType: !Ref 'Ec2InstanceType'
+        UserData: 
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            apt update
+            apt install apache2 -y
+        MetadataOptions:
+          HttpTokens: optional
+          HttpPutResponseHopLimit: 2
+          HttpEndpoint: enabled
+        IamInstanceProfile:
+          Arn: !GetAtt InstanceProfile.Arn
+  Ec2SecurityGroupSSH:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      VpcId: !Ref 'VpcId'
+      GroupDescription: allow SSH via static IP
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: !Ref 'StaticIPforSSH'
